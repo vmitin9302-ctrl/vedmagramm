@@ -43,6 +43,7 @@ import (
 	ephemeralapp "telesrv/internal/app/ephemeral"
 	filesapp "telesrv/internal/app/files"
 	"telesrv/internal/app/files/botavatars"
+	"telesrv/internal/app/gifsearch"
 	groupcallsapp "telesrv/internal/app/groupcalls"
 	"telesrv/internal/app/help"
 	"telesrv/internal/app/langpack"
@@ -1310,7 +1311,11 @@ func run(logger *zap.Logger) error {
 			account.WithLoginEmailVerification(codeStore, loginEmailSender, cfg.AuthCodeTTL, cfg.AuthCodeMaxAttempts, cfg.LoginEmailCodeLength))
 	}
 	accountService := account.NewService(passwordStore, accountOptions...)
-	botsService := botsapp.NewService(userStore, botStore, messageStore,
+	gifSearcher, err := gifsearch.NewSearcher(cfg.GifSearchProvider, cfg.GifSearchAPIKey, nil)
+	if err != nil {
+		return fmt.Errorf("gif search: %w", err)
+	}
+	botsOptions := []botsapp.Option{
 		botsapp.WithLogger(logger.Named("bots")),
 		botsapp.WithBlockChecker(contactStore),
 		botsapp.WithPublicChannelUsernameResolver(channelStore),
@@ -1322,7 +1327,13 @@ func run(logger *zap.Logger) error {
 		botsapp.WithGramsrvOperatorBot(cfg.GramsrvBotChatIDs, adminService),
 		botsapp.WithDialogRateLimiter(rateLimiter, cfg.VerificationBotRateLimit, cfg.VerificationBotRateWindow),
 		botsapp.WithPublicBaseURL(cfg.PublicBaseURL),
-		botsapp.WithBotAPIURL(cfg.BotAPIPublicURL))
+		botsapp.WithBotAPIURL(cfg.BotAPIPublicURL),
+	}
+	if gifSearcher != nil {
+		botsOptions = append(botsOptions, botsapp.WithGIFSearch(
+			gifsearch.NewProvider(gifSearcher, filesService, cfg.GifSearchLimit, cfg.GifSearchCacheTTL)))
+	}
+	botsService := botsapp.NewService(userStore, botStore, messageStore, botsOptions...)
 	// The built-in ChatBot and StickersBot are seeded with the default product
 	// name in their bio (users.about) and description (bots.description). Align
 	// them with the active branding on startup so the seeded "telesrv" text is

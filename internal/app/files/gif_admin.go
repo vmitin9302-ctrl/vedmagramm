@@ -21,13 +21,18 @@ func (s *Service) ValidateGifUpload(_ string, data []byte) (string, bool) {
 	return detectGifCatalogUploadMime(data)
 }
 
-// AdminUploadGifMaterial always normalizes to silent H.264 MP4. The blob is
-// written only to the explicitly selected Service backend; there is no cross-
-// backend retry or read fallback.
+// AdminUploadGifMaterial always normalizes to silent H.264 MP4.
 func (s *Service) AdminUploadGifMaterial(ctx context.Context, fileName string, data []byte) (domain.Document, error) {
 	if _, ok := s.ValidateGifUpload(fileName, data); !ok || s.gifs == nil {
 		return domain.Document{}, domain.ErrGifCatalogFileInvalid
 	}
+	return s.storeGifDocument(ctx, fileName, data)
+}
+
+// storeGifDocument normalizes the input into a silent H.264 GIFv and persists
+// the document with its blob. The blob is written only to the explicitly
+// selected Service backend; there is no cross-backend retry or read fallback.
+func (s *Service) storeGifDocument(ctx context.Context, fileName string, data []byte) (domain.Document, error) {
 	converted, err := s.gifs.Transcode(ctx, data)
 	if err != nil || len(converted.Data) == 0 || int64(len(converted.Data)) > domain.MaxGifCatalogDocumentSize ||
 		converted.Width <= 0 || converted.Height <= 0 || converted.Duration <= 0 {

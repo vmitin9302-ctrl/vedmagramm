@@ -51,3 +51,51 @@ func TestGifBotRanksManualCategoryAfterTitleMatches(t *testing.T) {
 		t.Fatalf("ranked IDs = %d,%d,%d", got[0].ID, got[1].ID, got[2].ID)
 	}
 }
+
+type gifSearchTestSource struct {
+	docs  []domain.Document
+	calls int
+}
+
+func (s *gifSearchTestSource) SearchGIFs(context.Context, string) ([]domain.Document, error) {
+	s.calls++
+	return s.docs, nil
+}
+
+func TestGifBotPrefersExternalSearch(t *testing.T) {
+	doc := domain.Document{
+		ID: 77, MimeType: "video/mp4",
+		Attributes: []domain.DocumentAttribute{
+			{Kind: domain.DocAttrFilename, FileName: "cat dance.mp4"},
+			{Kind: domain.DocAttrAnimated},
+			{Kind: domain.DocAttrVideo, W: 320, H: 240, Duration: 2},
+		},
+	}
+	search := &gifSearchTestSource{docs: []domain.Document{doc}}
+	catalog := gifCatalogTestSource{entries: []domain.GifCatalogEntry{{ID: 1, Title: "Local", DocumentID: 5}}}
+	svc := NewService(nil, nil, nil, WithGifCatalog(catalog), WithGIFSearch(search))
+
+	got, handled, err := svc.OnInlineQuery(context.Background(), domain.GifBotUserID, 42, "cat", "")
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if search.calls != 1 || len(got.Results) != 1 {
+		t.Fatalf("calls=%d results=%d", search.calls, len(got.Results))
+	}
+	if got.Results[0].ID != "77" || got.Results[0].Title != "cat dance" || got.Results[0].Media.Document.ID != 77 {
+		t.Fatalf("result = %+v", got.Results[0])
+	}
+}
+
+func TestGifBotFallsBackToCatalogWhenSearchIsEmpty(t *testing.T) {
+	doc := domain.Document{ID: 9, MimeType: "video/mp4", Attributes: []domain.DocumentAttribute{{Kind: domain.DocAttrAnimated}, {Kind: domain.DocAttrVideo, W: 1, H: 1, Duration: 1}}}
+	search := &gifSearchTestSource{}
+	svc := NewService(nil, nil, nil,
+		WithGifCatalog(gifCatalogTestSource{entries: []domain.GifCatalogEntry{{ID: 1, Title: "Dog", DocumentID: 9}}, docs: []domain.Document{doc}}),
+		WithGIFSearch(search))
+
+	got, _, err := svc.OnInlineQuery(context.Background(), domain.GifBotUserID, 42, "dog", "")
+	if err != nil || len(got.Results) != 1 || got.Results[0].Media.Document.ID != 9 {
+		t.Fatalf("results=%+v err=%v", got.Results, err)
+	}
+}
