@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"telesrv/internal/domain"
 )
 
@@ -19,6 +21,15 @@ func (s *Service) OnInlineQuery(ctx context.Context, botUserID, _ int64, query, 
 	}
 	if offset != "" {
 		return domain.BotInlineResults{Gallery: true, CacheTime: 60}, true, nil
+	}
+	if s.gifSearch != nil {
+		docs, err := s.gifSearch.SearchGIFs(ctx, query)
+		if err != nil {
+			s.log.Warn("gif search failed, falling back to the local catalog", zap.Error(err))
+		}
+		if len(docs) > 0 {
+			return gifSearchResults(docs), true, nil
+		}
 	}
 	if s.gifCatalog == nil {
 		return domain.BotInlineResults{}, true, domain.ErrGifCatalogUnavailable
@@ -80,4 +91,39 @@ func rankGifCatalogEntries(entries []domain.GifCatalogEntry, query string) []dom
 		}
 	}
 	return append(append(matched, categoryMatched...), rest...)
+}
+
+// gifSearchResults converts externally minted GIFv documents into inline
+// results. The documents already carry the animated/video attributes, so the
+// clients render and send them exactly like catalog GIFs.
+func gifSearchResults(docs []domain.Document) domain.BotInlineResults {
+	results := make([]domain.BotInlineResult, 0, len(docs))
+	for _, doc := range docs {
+		docCopy := doc
+		results = append(results, domain.BotInlineResult{
+			ID:    strconv.FormatInt(doc.ID, 10),
+			Type:  "gif",
+			Title: gifDocumentTitle(doc),
+			Media: &domain.MessageMedia{Kind: domain.MessageMediaKindDocument, Document: &docCopy},
+		})
+	}
+	return domain.BotInlineResults{Gallery: true, CacheTime: 300, Results: results}
+}
+
+// gifDocumentTitle derives the inline result title from the document file name.
+func gifDocumentTitle(doc domain.Document) string {
+	for _, attr := range doc.Attributes {
+		if attr.Kind != domain.DocAttrFilename {
+			continue
+		}
+		name := strings.TrimSpace(attr.FileName)
+		if name == "" {
+			continue
+		}
+		if i := strings.LastIndexByte(name, '.'); i > 0 {
+			name = name[:i]
+		}
+		return name
+	}
+	return ""
 }

@@ -140,6 +140,7 @@ type Service struct {
 		ListGifCatalog(context.Context, bool) ([]domain.GifCatalogEntry, error)
 		GetDocuments(context.Context, []int64) ([]domain.Document, error)
 	}
+	gifSearch             GIFSearchProvider
 	verification          verificationApplications
 	customVerification    customVerifications
 	verifierTargets       verifierBotTargets
@@ -285,6 +286,22 @@ func WithGifCatalog(c interface {
 	GetDocuments(context.Context, []int64) ([]domain.Document, error)
 }) Option {
 	return func(s *Service) { s.gifCatalog = c }
+}
+
+// GIFSearchProvider resolves an inline @gif query through an external provider
+// and returns documents that are already stored and sendable.
+type GIFSearchProvider interface {
+	SearchGIFs(ctx context.Context, query string) ([]domain.Document, error)
+}
+
+// WithGIFSearch injects the external @gif search backend. Without it the bot
+// serves only the local catalog seeded from TELESRV_GIF_SEED_DIR.
+func WithGIFSearch(p GIFSearchProvider) Option {
+	return func(s *Service) {
+		if p != nil {
+			s.gifSearch = p
+		}
+	}
 }
 
 // WithVerification injects the official verification service used by the

@@ -370,6 +370,14 @@ type Config struct {
 	StickerSeedDir string
 	// GifSeedDir is an optional bounded .gif/.mp4 drop directory for @gif.
 	GifSeedDir string
+	// GifSearchProvider selects the external @gif search backend: "off", "klipy" or "giphy".
+	GifSearchProvider string
+	// GifSearchAPIKey authenticates the external @gif search backend.
+	GifSearchAPIKey string
+	// GifSearchLimit bounds how many external results one @gif query may mint (1..50).
+	GifSearchLimit int
+	// GifSearchCacheTTL caches minted documents per normalized query; <=0 disables the cache.
+	GifSearchCacheTTL time.Duration
 	// StickerSeedMaxSets limits the number of regular sticker sets imported (avoiding importing too many packs at startup); <=0 means unlimited.
 	StickerSeedMaxSets int
 	// PremiumPromoSeedDir is the export directory for help.getPremiumPromo videos and thumbnails.
@@ -1191,6 +1199,10 @@ func Load() (Config, error) {
 		StorageUsageRefreshInterval:       envDurationOr("TELESRV_STORAGE_USAGE_REFRESH_INTERVAL", time.Minute),
 		StickerSeedDir:                    envOr("TELESRV_STICKER_SEED_DIR", "data/sticker-seed"),
 		GifSeedDir:                        envOr("TELESRV_GIF_SEED_DIR", "data/gifs"),
+		GifSearchProvider:                 strings.ToLower(strings.TrimSpace(envOr("TELESRV_GIF_PROVIDER", "off"))),
+		GifSearchAPIKey:                   strings.TrimSpace(envOr("TELESRV_GIF_API_KEY", "")),
+		GifSearchLimit:                    envIntOr("TELESRV_GIF_SEARCH_LIMIT", 12),
+		GifSearchCacheTTL:                 envDurationOr("TELESRV_GIF_CACHE_TTL", 24*time.Hour),
 		StickerSeedMaxSets:                envIntOr("TELESRV_STICKER_SEED_MAX_SETS", 300),
 		PremiumPromoSeedDir:               envOr("TELESRV_PREMIUM_PROMO_SEED_DIR", "data/premium-promo"),
 		IdentityDir:                       envOr("TELESRV_IDENTITY_DIR", "data/identity"),
@@ -1483,6 +1495,9 @@ func Load() (Config, error) {
 	if err := validateBlobStorageConfig(cfg); err != nil {
 		return Config{}, err
 	}
+	if err := validateGifSearchConfig(cfg); err != nil {
+		return Config{}, err
+	}
 	if cfg.DC <= 0 || int64(cfg.DC) > int64(1<<31-1) {
 		return Config{}, fmt.Errorf("TELESRV_DC must be a positive TL int32")
 	}
@@ -1768,6 +1783,29 @@ func normalizeAdvertiseIP(raw string) (string, error) {
 // validateGeoIPConfig validates the session geo-attribution backend chain. When no endpoint is configured
 // everything is allowed -- the session list keeps returning the "Unknown" placeholder text, which is the
 // expected behavior when disabled and should not keep the service from starting.
+// validateGifSearchConfig rejects an enabled external @gif backend without a key
+// and bounds the query so a single inline search cannot mint an unbounded set of
+// documents.
+func validateGifSearchConfig(cfg Config) error {
+	switch cfg.GifSearchProvider {
+	case "", "off":
+		return nil
+	case "klipy", "giphy":
+	default:
+		return fmt.Errorf("TELESRV_GIF_PROVIDER must be off, klipy or giphy")
+	}
+	if strings.TrimSpace(cfg.GifSearchAPIKey) == "" {
+		return fmt.Errorf("TELESRV_GIF_PROVIDER=%s requires TELESRV_GIF_API_KEY", cfg.GifSearchProvider)
+	}
+	if cfg.GifSearchLimit < 1 || cfg.GifSearchLimit > domain.MaxBotInlineResults {
+		return fmt.Errorf("TELESRV_GIF_SEARCH_LIMIT must be in [1,%d]", domain.MaxBotInlineResults)
+	}
+	if cfg.GifSearchCacheTTL < 0 {
+		return fmt.Errorf("TELESRV_GIF_CACHE_TTL must be non-negative")
+	}
+	return nil
+}
+
 func validateGeoIPConfig(cfg Config) error {
 	configured := 0
 	for index, endpoint := range cfg.GeoIPEndpoints {
