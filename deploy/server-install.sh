@@ -28,7 +28,7 @@ DB_USER="telesrv"
 # telesrv/telesrv. База слушает только 127.0.0.1.
 DB_PASS="telesrv"
 PORT="${PORT:-2398}"
-BRAND="${BRAND:-Наш Телеграм}"
+BRAND="${BRAND:-Ведьмаграм}"
 
 log() { printf '\n==== %s\n' "$*"; }
 die() { printf '\nОШИБКА: %s\n' "$*" >&2; exit 1; }
@@ -103,6 +103,7 @@ set_kv TELESRV_DEV_AUTH_CODE        "${DEV_CODE}"
 set_kv TELESRV_ALLOW_INSECURE_DEVELOPMENT_AUTH "true"
 set_kv TELESRV_BRAND_PRODUCT_NAME   "${BRAND}"
 set_kv TELESRV_PUBLIC_APP_NAME      "${BRAND}"
+set_kv TELESRV_BRAND_PRODUCT_USERNAME "vedmagramm"
 set_kv TELESRV_DEFAULT_COUNTRY_CODE "RU"
 set_kv TELESRV_PUBLIC_BASE_URL      "http://${ADVERTISE_IP}:${PORT}"
 set_kv TELESRV_PUBLIC_WEB_BASE_URL  "http://${ADVERTISE_IP}:${PORT}"
